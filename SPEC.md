@@ -1,104 +1,103 @@
-# Specification: Governed LLM Gateway (Prototype)
+# Specification: Governed LLM Gateway
 
 ## 1. Problem
 
-Teams experimenting with LLMs often call providers directly from many places:
-local scripts, services, notebooks, and one-off tools. This fragments:
+Organizations adopting LLMs in regulated industries face a fundamental governance gap. Existing LLM gateways solve routing and cost optimization but do not answer the questions that compliance teams, CISOs, and auditors ask:
 
-- API key management
-- Rate limiting and cost visibility
-- Safety and policy checks
-- Observability of AI usage
+- How do we prove every LLM interaction was authorized by policy?
+- How do we produce tamper-evident audit trails for regulators?
+- How do we prevent sensitive data (PII, PHI) from reaching external providers?
+- How do we map our LLM usage controls to specific compliance frameworks?
 
-This prototype explores a **simple central gateway** that sits in front of one or more LLM providers and implements:
-
-- Basic routing
-- Basic rate limiting
-- Basic logging/telemetry
-- Simple policy hooks
+This gateway addresses that gap by making compliance the primary design constraint, not an afterthought.
 
 ## 2. Users and Use Cases
 
 ### Users
 
-- **Individual developers** who want a single endpoint for all LLM calls.
-- **Experimenters** who want basic cost/usage visibility without re-architecting everything.
+- **Compliance officers** who need evidence that LLM usage follows organizational policies.
+- **Security teams** who need to enforce data classification and access controls on LLM requests.
+- **Development teams** in regulated industries (healthcare, finance, government) who need a governed endpoint for LLM calls.
+- **Auditors** who need structured evidence packages mapped to compliance controls.
 
-### Primary use cases (for the prototype)
+### Primary Use Cases
 
-1. **Single unified endpoint for completions/chat**
-   - Caller sends: model alias, prompt, and optional metadata.
-   - Gateway forwards to the appropriate provider/model.
-   - Gateway returns the provider’s response (or a simplified envelope).
+1. **Policy-gated LLM access**
+   - Every request is evaluated against YAML-defined policy rules before reaching any provider.
+   - Decisions: ALLOW, DENY, or REQUIRE_APPROVAL.
+   - PII detection blocks sensitive data from leaving the infrastructure.
 
-2. **Basic rate limiting**
-   - Per API key or per “client id”
-   - Simple limits: requests per minute, tokens per minute (approximate is okay at first).
+2. **Immutable audit trail**
+   - Every request (allowed or denied) produces a hash-chain linked audit entry.
+   - SHA-256 chain: each entry includes the hash of the previous entry.
+   - Tamper detection: `verify_chain()` detects any modification to historical entries.
+   - Prompts and responses are hashed, never stored raw.
 
-3. **Basic logging**
-   - Append logs to a file or simple data store:
-     - timestamp
-     - client id / API key id
-     - model alias and provider
-     - success/failure
-     - approximate token usage (if available)
+3. **Compliance evidence export**
+   - Audit entries are mapped to SOC 2 and HIPAA control IDs.
+   - `generate_evidence_package()` produces structured JSON evidence for auditors.
+   - Date-range filtering, chain verification, and summary statistics included.
 
-4. **Simple policy checks**
-   - Configurable rules such as:
-     - disable certain model aliases
-     - require a client id
-     - optionally block oversized prompts
+4. **Multi-provider routing with rate limiting**
+   - Model alias to provider/model mapping via configuration.
+   - Per-client rate limiting (requests/minute, tokens/minute).
+   - Structured error responses for all rejection types.
 
 ## 3. Scope
 
-In scope for the first slice:
+### In scope
 
-- One HTTP endpoint (e.g., `/v1/chat` or `/v1/complete`).
-- One or two LLM providers (e.g., OpenAI-style and one other),
-  represented via configuration.
-- A small configuration file for:
-  - provider API keys (dummy or env-based)
-  - model aliases → provider/model mapping
-  - rate-limit parameters
-- Very simple in-memory or file-based rate limiting (acceptable for a prototype).
-- Logging to stdout and a basic log sink (file or simple DB).
+- Single HTTP endpoint (`/v1/chat`) with policy evaluation, routing, and audit.
+- YAML-based policy engine with PII detection, data classification gating, jurisdiction rules, keyword blocking, and model/client access control.
+- Hash-chain linked JSONL audit trail with Merkle tree verification.
+- Compliance evidence collector supporting SOC 2 (CC6.1, CC6.6, CC6.8, CC7.1, CC7.2, CC8.1) and HIPAA (164.312 series).
+- Multi-provider routing with OpenAI-compatible adapter and stub mode.
+- Per-client in-memory rate limiting.
+- Configuration via JSON with environment-variable-based secret management.
 
-Out of scope for the first slice:
+### Out of scope (future iterations)
 
-- Full authentication/authorization
-- Multi-tenant billing
-- Complex policy engines
-- Production-grade rate limiting and distributed quotas
+- Full OPA/Rego integration (current YAML engine covers the core patterns).
+- Persistent/distributed rate limiting.
+- Multi-tenant billing and RBAC.
+- Real-time approval workflow UI (current implementation returns REQUIRE_APPROVAL status for external workflow integration).
+- Streaming responses.
+- ISO 27001 control mappings (framework is extensible).
 
 ## 4. Constraints
 
-- Implemented as a small HTTP service (e.g., Node/TypeScript or Python).
-- Run locally with minimal setup (`npm install` / `uv` / etc.).
+- Implemented as a Python HTTP service using FastAPI.
+- Runs locally with minimal setup (`pip install` and `uvicorn`).
 - No employer-specific code, data, or confidential details.
-- Keep provider-specific integrations generic and minimal.
+- API keys resolved from environment variables, never stored in configuration.
+- Audit trail is append-only; no mechanism to delete or overwrite entries.
+- Prompts and responses are never stored in raw form (SHA-256 hashed only).
 
-## 5. Interface (First Slice)
+## 5. Interface
 
-### Request (example)
+### Request
 
-```jsonc
+```json
 POST /v1/chat
 {
   "client_id": "dev-local-1",
   "model": "default-chat",
   "messages": [
-    { "role": "user", "content": "Explain rate limiting in simple terms." }
+    {"role": "user", "content": "Explain rate limiting."}
   ],
-  "metadata": {
-    "request_id": "optional-caller-id"
-  }
+  "data_classification": "public",
+  "jurisdiction": "US",
+  "metadata": {"request_id": "optional-caller-id"}
 }
+```
 
-Response (example)
+### Successful Response
+
+```json
 {
   "id": "gw-req-123",
   "model": "default-chat",
-  "provider": "example-llm-provider",
+  "provider": "openai",
   "usage": {
     "prompt_tokens": 42,
     "completion_tokens": 38,
@@ -107,50 +106,65 @@ Response (example)
   "message": {
     "role": "assistant",
     "content": "Rate limiting is..."
-  }
-}
-
-
-If the request is rejected due to rate limit or policy:
-
-{
-  "error": {
-    "type": "rate_limit_exceeded",
-    "message": "Request rate exceeded for client_id dev-local-1"
+  },
+  "policy": {
+    "decision": "ALLOW",
+    "triggered_rules": [],
+    "details": {}
+  },
+  "audit": {
+    "chain_hash": "a3f8...",
+    "entry_index": 42
   }
 }
 ```
 
-6. Configuration
+### Policy Denial Response
 
-Example config.json (or .yaml):
+```json
+{
+  "error": {
+    "type": "policy_denied",
+    "message": "Request denied by policy: block-pii-in-prompts"
+  },
+  "policy": {
+    "decision": "DENY",
+    "triggered_rules": ["block-pii-in-prompts"],
+    "details": {}
+  }
+}
+```
 
-Provider definitions (base URLs, env var names for keys)
+### Rate Limit Response
 
-Model aliases
+```json
+{
+  "error": {
+    "type": "rate_limit_exceeded",
+    "message": "Request rate exceeded for client_id dev-local-1 (20 req/min)."
+  }
+}
+```
 
-Rate-limit parameters
+## 6. Configuration
 
-7. Minimal Acceptable First Slice
+JSON configuration file with sections for:
 
-For this prototype to be considered “working”:
+- **providers**: Provider definitions (base URLs, env var names for API keys)
+- **aliases**: Model alias to provider/model mappings
+- **rate_limit**: Per-client request and token limits
+- **policy_file**: Path to YAML policy rules
+- **audit_log_file**: Path to append-only JSONL audit trail
+- **compliance**: Framework list, evidence output directory, retention days
 
- Accepts a POST request on a single endpoint.
+## 7. Acceptance Criteria
 
- Forwards to one configured provider using a model alias.
-
- Logs each request/response outcome.
-
- Enforces a very simple per-client rate limit.
-
- Returns a clear error when the rate limit is exceeded.
-
-Future iterations can add:
-
-Additional providers
-
-More sophisticated policies
-
-Persistent storage for rate-limiting and logs
-
-Better observability and dashboards.
+- [x] `/v1/chat` accepts requests and routes to configured providers.
+- [x] Policy engine evaluates YAML rules and returns ALLOW/DENY/REQUIRE_APPROVAL.
+- [x] PII patterns (SSN, credit card, email, phone) detected and blocked.
+- [x] Every request produces a hash-chain linked audit entry.
+- [x] `verify_chain()` detects tampering of any historical entry.
+- [x] Compliance evidence packages generated for SOC 2 and HIPAA controls.
+- [x] Per-client rate limiting enforced with structured error responses.
+- [x] Prompts and responses hashed (SHA-256), never stored raw.
+- [x] 103 tests passing covering all modules.

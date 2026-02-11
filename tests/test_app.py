@@ -1,4 +1,8 @@
-"""Smoke tests for the /v1/chat endpoint."""
+"""Smoke tests for the /v1/chat endpoint.
+
+Tests cover the happy path, error handling, rate limiting, and the
+compliance-first features (policy evaluation, audit trail entries).
+"""
 
 import json
 import os
@@ -15,7 +19,7 @@ from src.app import app
 @pytest.fixture(autouse=True)
 def _reset_app_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Reset the app's global state before each test and point to a test config."""
-    # Build a test config
+    # Build a test config (no policy file -- clean baseline)
     config = {
         "providers": {
             "test-provider": {
@@ -36,6 +40,7 @@ def _reset_app_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         },
         "max_prompt_tokens": 500,
         "log_file": str(tmp_path / "test.log"),
+        "audit_log_file": str(tmp_path / "audit.jsonl"),
     }
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config))
@@ -47,6 +52,8 @@ def _reset_app_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(app_module, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(app_module, "_config", None)
     monkeypatch.setattr(app_module, "_limiter", None)
+    monkeypatch.setattr(app_module, "_audit_trail", None)
+    monkeypatch.setattr(app_module, "_policy_engine", None)
 
 
 def _make_request_body(
@@ -76,6 +83,34 @@ async def test_happy_path_stub_mode() -> None:
     assert data["message"]["role"] == "assistant"
     assert "stub response" in data["message"]["content"].lower()
     assert data["usage"]["total_tokens"] > 0
+
+
+@pytest.mark.asyncio
+async def test_response_includes_policy_info() -> None:
+    """Successful responses include policy evaluation metadata."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/v1/chat", json=_make_request_body())
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "policy" in data
+    assert data["policy"]["decision"] == "ALLOW"
+
+
+@pytest.mark.asyncio
+async def test_response_includes_audit_info() -> None:
+    """Successful responses include audit trail metadata."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/v1/chat", json=_make_request_body())
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "audit" in data
+    assert "chain_hash" in data["audit"]
+    assert len(data["audit"]["chain_hash"]) == 64
+    assert data["audit"]["entry_index"] == 1
 
 
 @pytest.mark.asyncio
@@ -171,3 +206,47 @@ async def test_separate_clients_independent_limits() -> None:
             "/v1/chat", json=_make_request_body(client_id="client-b")
         )
         assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_audit_trail_persisted(tmp_path: Path) -> None:
+    """Audit entries are persisted to the JSONL file."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/v1/chat", json=_make_request_body())
+        await client.post("/v1/chat", json=_make_request_body())
+
+    audit_file = tmp_path / "audit.jsonl"
+    assert audit_file.exists()
+    lines = audit_file.read_text().strip().split("\n")
+    assert len(lines) == 2
+
+    for line in lines:
+        entry = json.loads(line)
+        assert "chain_hash" in entry
+        assert "prompt_hash" in entry
+        assert entry["action"] == "chat_completion"
+
+
+@pytest.mark.asyncio
+async def test_data_classification_field() -> None:
+    """The data_classification field is accepted in requests."""
+    transport = ASGITransport(app=app)
+    body = _make_request_body()
+    body["data_classification"] = "public"
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/v1/chat", json=body)
+
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_jurisdiction_field() -> None:
+    """The jurisdiction field is accepted in requests."""
+    transport = ASGITransport(app=app)
+    body = _make_request_body()
+    body["jurisdiction"] = "US"
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/v1/chat", json=body)
+
+    assert resp.status_code == 200

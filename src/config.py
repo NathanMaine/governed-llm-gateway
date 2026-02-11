@@ -44,6 +44,16 @@ class RateLimitConfig:
 
 
 @dataclass
+class ComplianceConfig:
+    """Compliance-related configuration."""
+
+    enabled: bool = True
+    frameworks: list = field(default_factory=lambda: ["SOC2", "HIPAA"])
+    evidence_output_dir: str = "evidence/"
+    retention_days: int = 2555  # ~7 years, common for regulated industries
+
+
+@dataclass
 class GatewayConfig:
     """Top-level gateway configuration."""
 
@@ -52,6 +62,9 @@ class GatewayConfig:
     rate_limit: RateLimitConfig = field(default_factory=RateLimitConfig)
     max_prompt_tokens: Optional[int] = None
     log_file: str = "logs/gateway.log"
+    policy_file: Optional[str] = None
+    audit_log_file: str = "logs/audit.jsonl"
+    compliance: ComplianceConfig = field(default_factory=ComplianceConfig)
 
 
 def load_config(path: Union[str, Path]) -> GatewayConfig:
@@ -97,10 +110,21 @@ def load_config(path: Union[str, Path]) -> GatewayConfig:
         tokens_per_minute=rate_limit_raw.get("tokens_per_minute"),
     )
 
+    compliance_raw = raw.get("compliance", {})
+    compliance = ComplianceConfig(
+        enabled=compliance_raw.get("enabled", True),
+        frameworks=compliance_raw.get("frameworks", ["SOC2", "HIPAA"]),
+        evidence_output_dir=compliance_raw.get("evidence_output_dir", "evidence/"),
+        retention_days=compliance_raw.get("retention_days", 2555),
+    )
+
     return GatewayConfig(
         providers=providers,
         aliases=aliases,
         rate_limit=rate_limit,
         max_prompt_tokens=raw.get("max_prompt_tokens"),
         log_file=raw.get("log_file", "logs/gateway.log"),
+        policy_file=raw.get("policy_file"),
+        audit_log_file=raw.get("audit_log_file", "logs/audit.jsonl"),
+        compliance=compliance,
     )

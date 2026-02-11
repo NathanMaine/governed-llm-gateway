@@ -1,6 +1,6 @@
 """Request and response models for the governed LLM gateway."""
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,14 @@ class ChatRequest(BaseModel):
     metadata: Optional[Dict] = Field(
         default=None, description="Optional caller metadata"
     )
+    data_classification: Optional[str] = Field(
+        default=None,
+        description="Data classification label (e.g. PHI, PCI, public, internal)",
+    )
+    jurisdiction: Optional[str] = Field(
+        default=None,
+        description="Jurisdiction for data residency routing (e.g. EU, US)",
+    )
 
 
 class UsageInfo(BaseModel):
@@ -33,6 +41,21 @@ class UsageInfo(BaseModel):
     total_tokens: int = 0
 
 
+class PolicyInfo(BaseModel):
+    """Policy evaluation result included in responses."""
+
+    decision: str
+    triggered_rules: List[str] = Field(default_factory=list)
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AuditInfo(BaseModel):
+    """Audit trail reference included in responses."""
+
+    chain_hash: str
+    entry_index: int
+
+
 class ChatResponse(BaseModel):
     """Successful chat response envelope."""
 
@@ -41,6 +64,8 @@ class ChatResponse(BaseModel):
     provider: str
     usage: UsageInfo
     message: ChatMessage
+    policy: Optional[PolicyInfo] = None
+    audit: Optional[AuditInfo] = None
 
 
 class ErrorDetail(BaseModel):
@@ -54,3 +79,4 @@ class ErrorResponse(BaseModel):
     """Error response envelope."""
 
     error: ErrorDetail
+    policy: Optional[PolicyInfo] = None

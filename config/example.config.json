@@ -30,5 +30,13 @@
     "tokens_per_minute": 40000
   },
   "max_prompt_tokens": 4000,
-  "log_file": "logs/gateway.log"
+  "log_file": "logs/gateway.log",
+  "policy_file": "config/policies/default.yaml",
+  "audit_log_file": "logs/audit.jsonl",
+  "compliance": {
+    "enabled": true,
+    "frameworks": ["SOC2", "HIPAA"],
+    "evidence_output_dir": "evidence/",
+    "retention_days": 2555
+  }
 }
