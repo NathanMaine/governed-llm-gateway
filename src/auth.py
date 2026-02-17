@@ -6,6 +6,7 @@ plaintext -- only their hashes appear in the configuration.
 """
 
 import hashlib
+import hmac
 from typing import Dict, Optional
 
 
@@ -53,9 +54,12 @@ def validate_api_key(
         raise AuthenticationError("Missing API key. Provide X-API-Key header.")
 
     incoming_hash = hash_api_key(header_value)
+    matched_name: Optional[str] = None
 
     for key_name, expected_hash in api_keys.items():
-        if incoming_hash == expected_hash:
-            return key_name
+        if hmac.compare_digest(incoming_hash, expected_hash):
+            matched_name = key_name
 
-    raise AuthenticationError("Invalid API key.")
+    if matched_name is None:
+        raise AuthenticationError("Invalid API key.")
+    return matched_name

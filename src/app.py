@@ -147,6 +147,7 @@ async def chat(
     request_id = "gw-{}".format(uuid.uuid4().hex[:12])
 
     # --- Authentication ---
+    auth_client = None
     if config.auth.enabled:
         try:
             auth_client = validate_api_key(x_api_key, config.auth.api_keys)
@@ -409,6 +410,7 @@ async def chat(
             "provider": route.provider.name,
             "usage": result.usage.model_dump(),
             "triggered_rules": policy_result.triggered_rules,
+            "authenticated_as": auth_client,
         },
     )
 
