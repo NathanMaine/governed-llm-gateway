@@ -212,6 +212,8 @@ rules:
 
 The default policy file uses descriptive rule names like `block-pii-in-prompts` for readability. In production deployments, use opaque rule identifiers (e.g., `POL-001`, `R-4a2f`) to avoid leaking internal policy structure in error responses and audit logs.
 
+The example config (`config/example.config.json`) contains a test API key hash. Generate real keys before deploying. The `/docs` and `/redoc` endpoints are disabled by default.
+
 ## Compliance Framework Support
 
 The gateway maps audit trail entries to specific compliance controls:

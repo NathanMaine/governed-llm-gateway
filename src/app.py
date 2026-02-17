@@ -107,7 +107,13 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="Governed LLM Gateway", version="0.2.0", lifespan=lifespan)
+app = FastAPI(
+    title="Governed LLM Gateway",
+    version="0.2.0",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+)
 
 
 def _error_response(

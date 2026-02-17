@@ -29,6 +29,7 @@
     "requests_per_minute": 20,
     "tokens_per_minute": 40000
   },
+  "_auth_warning": "DO NOT deploy with this example hash. Generate real keys: python -c 'import secrets,hashlib; k=secrets.token_urlsafe(32); print(f\"key={k} hash={hashlib.sha256(k.encode()).hexdigest()}\")'",
   "auth": {
     "enabled": true,
     "api_keys": {
