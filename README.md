@@ -74,6 +74,7 @@ uvicorn src.app:app --reload
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/chat \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: test-key-1" \
   -d '{
     "client_id": "dev-local-1",
     "model": "default-chat",
@@ -138,6 +139,28 @@ Response:
 }
 ```
 
+## Authentication
+
+API key authentication is enabled by default. Configure keys in `config/example.config.json`:
+
+```json
+"auth": {
+  "enabled": true,
+  "api_keys": {
+    "dev-key-1": "1255558df586ae279007fffa27ec17451d1507f7ac5442add9ffbc070f9f623b"
+  }
+}
+```
+
+Keys are stored as SHA-256 hashes, never plaintext. Generate a hash for a new key:
+
+```python
+from src.auth import hash_api_key
+print(hash_api_key("your-secret-key"))
+```
+
+Requests without a valid `X-API-Key` header receive a `401` response. Auth failures are recorded in the audit trail. Set `"enabled": false` to disable authentication.
+
 ## Policy Engine
 
 Policies are defined in YAML and evaluated on every request before provider dispatch. See `config/policies/default.yaml` for the full example.
@@ -184,6 +207,10 @@ rules:
 | `ALLOW` | 200 | Request proceeds to provider |
 | `DENY` | 403 | Request blocked, never reaches provider |
 | `REQUIRE_APPROVAL` | 403 | Request blocked pending approval workflow |
+
+### Production Considerations
+
+The default policy file uses descriptive rule names like `block-pii-in-prompts` for readability. In production deployments, use opaque rule identifiers (e.g., `POL-001`, `R-4a2f`) to avoid leaking internal policy structure in error responses and audit logs.
 
 ## Compliance Framework Support
 

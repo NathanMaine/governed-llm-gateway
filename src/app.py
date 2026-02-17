@@ -16,9 +16,10 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
+from src.auth import AuthenticationError, validate_api_key
 from src.audit import AuditTrail, hash_content
 from src.config import GatewayConfig, load_config
 from src.limiter import RateLimitExceeded, RateLimiter
@@ -124,7 +125,10 @@ def _error_response(
 
 
 @app.post("/v1/chat", response_model=None)
-async def chat(request: ChatRequest) -> JSONResponse:
+async def chat(
+    request: ChatRequest,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> JSONResponse:
     """Handle a chat completion request.
 
     Request flow:
@@ -141,6 +145,31 @@ async def chat(request: ChatRequest) -> JSONResponse:
     audit = get_audit_trail()
     policy_engine = get_policy_engine()
     request_id = "gw-{}".format(uuid.uuid4().hex[:12])
+
+    # --- Authentication ---
+    if config.auth.enabled:
+        try:
+            auth_client = validate_api_key(x_api_key, config.auth.api_keys)
+        except AuthenticationError as exc:
+            log_request(
+                client_id=request.client_id,
+                alias=request.model,
+                provider=None,
+                outcome="auth_failed",
+                error=exc.detail,
+                request_id=request_id,
+            )
+            audit.append(
+                request_id=request_id,
+                client_id=request.client_id,
+                model=request.model,
+                action="auth_failure",
+                prompt_hash="",
+                response_hash="",
+                policy_decision="DENY",
+                metadata={"reason": "auth_failed", "detail": exc.detail},
+            )
+            return _error_response(401, "authentication_error", exc.detail)
 
     # Combine all message content for policy evaluation and hashing
     prompt_text = " ".join(m.content for m in request.messages)

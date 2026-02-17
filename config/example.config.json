@@ -29,6 +29,12 @@
     "requests_per_minute": 20,
     "tokens_per_minute": 40000
   },
+  "auth": {
+    "enabled": true,
+    "api_keys": {
+      "dev-key-1": "1255558df586ae279007fffa27ec17451d1507f7ac5442add9ffbc070f9f623b"
+    }
+  },
   "max_prompt_tokens": 4000,
   "log_file": "logs/gateway.log",
   "policy_file": "config/policies/default.yaml",
