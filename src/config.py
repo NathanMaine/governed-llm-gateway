@@ -8,7 +8,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 
 @dataclass
@@ -56,7 +56,7 @@ class ComplianceConfig:
     """Compliance-related configuration."""
 
     enabled: bool = True
-    frameworks: list = field(default_factory=lambda: ["SOC2", "HIPAA"])
+    frameworks: List[str] = field(default_factory=lambda: ["SOC2", "HIPAA"])
     evidence_output_dir: str = "evidence/"
     retention_days: int = 2555  # ~7 years, common for regulated industries
 
@@ -91,7 +91,7 @@ def load_config(path: Union[str, Path]) -> GatewayConfig:
     """
     path = Path(path)
     if not path.exists():
-        raise FileNotFoundError(f"Config file not found: {path}")
+        raise FileNotFoundError("Config file not found: {}".format(path))
 
     with open(path) as f:
         raw: Dict[str, Any] = json.load(f)

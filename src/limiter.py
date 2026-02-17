@@ -1,7 +1,7 @@
 """In-memory rate limiter for the governed LLM gateway.
 
 Tracks per-client_id request counts and (optionally) token counts using a
-sliding-window approach based on minute boundaries.
+fixed-window approach that resets each minute.
 """
 
 import time
@@ -20,7 +20,7 @@ class RateLimitExceeded(Exception):
 
 @dataclass
 class _ClientBucket:
-    """Sliding-window counters for a single client_id."""
+    """Fixed-window counters for a single client_id."""
 
     window_start: float = 0.0
     request_count: int = 0

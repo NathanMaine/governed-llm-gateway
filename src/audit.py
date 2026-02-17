@@ -15,12 +15,15 @@ Design principles:
 
 import hashlib
 import json
+import logging
 import os
 import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+_logger = logging.getLogger("gateway")
 
 
 # The genesis hash used as the "previous hash" for the first entry in the chain.
@@ -123,7 +126,12 @@ class AuditTrail:
                     entry_data = json.loads(line)
                     self._last_hash = entry_data.get("chain_hash", GENESIS_HASH)
                     self._entry_count += 1
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    _logger.warning(
+                        "Corrupt audit entry at line %d: %s",
+                        self._entry_count + 1,
+                        e,
+                    )
                     continue
 
     def append(
@@ -205,7 +213,8 @@ class AuditTrail:
                 try:
                     data = json.loads(line)
                     entries.append(AuditEntry.from_dict(data))
-                except (json.JSONDecodeError, TypeError):
+                except (json.JSONDecodeError, TypeError) as e:
+                    _logger.warning("Skipping corrupt audit entry: %s", e)
                     continue
 
         return entries

@@ -93,10 +93,12 @@ async def _real_request(
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
+        data = resp.json()
 
-    data = resp.json()
-
-    choice = data.get("choices", [{}])[0]
+    choices = data.get("choices", [])
+    if not choices:
+        raise ValueError("Provider returned no choices in response")
+    choice = choices[0]
     msg = choice.get("message", {})
     usage_raw = data.get("usage", {})
 

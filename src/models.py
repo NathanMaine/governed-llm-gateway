@@ -20,7 +20,7 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage] = Field(
         ..., min_length=1, description="Conversation messages"
     )
-    metadata: Optional[Dict] = Field(
+    metadata: Optional[Dict[str, Any]] = Field(
         default=None, description="Optional caller metadata"
     )
     data_classification: Optional[str] = Field(

@@ -44,12 +44,14 @@ class PolicyResult:
         return self.decision == PolicyDecision.ALLOW
 
 
-# Common PII patterns used for content scanning
-PII_PATTERNS: Dict[str, str] = {
-    "ssn": r"\b\d{3}-\d{2}-\d{4}\b",
-    "credit_card": r"\b(?:\d[ -]*?){13,19}\b",
-    "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-    "phone_us": r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
+# Common PII patterns used for content scanning (precompiled for performance)
+_PII_PATTERNS = {
+    "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
+    "credit_card": re.compile(r"\b(?:\d[ -]*?){13,19}\b"),
+    "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"),
+    "phone_us": re.compile(
+        r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"
+    ),
 }
 
 
@@ -274,7 +276,7 @@ class PolicyEngine:
         Returns:
             True if any PII pattern is detected.
         """
-        for pattern in PII_PATTERNS.values():
-            if re.search(pattern, text):
+        for pattern in _PII_PATTERNS.values():
+            if pattern.search(text):
                 return True
         return False

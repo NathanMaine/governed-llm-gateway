@@ -365,7 +365,7 @@ async def chat(
             "provider_error",
             "Provider returned HTTP {}.".format(exc.response.status_code),
         )
-    except Exception as exc:
+    except (httpx.RequestError, ValueError) as exc:
         log_request(
             client_id=request.client_id,
             alias=request.model,
@@ -387,7 +387,9 @@ async def chat(
         return _error_response(
             502,
             "provider_error",
-            "Failed to reach provider: {}".format(exc),
+            "Failed to reach provider. Check request_id {} in logs.".format(
+                request_id
+            ),
         )
 
     # --- Record token usage for rate limiting ---
@@ -449,5 +451,5 @@ async def validation_exception_handler(
     return _error_response(
         422,
         "validation_error",
-        "Request validation failed: {}".format(exc),
+        "Request validation failed. Check required fields and types.",
     )
